@@ -1,0 +1,46 @@
+"0","elo_rating <- function(games, zeta = 400, kappa = 25, n_epochs = 10, seed = 1) {
+  players <- sort(unique(c(games$White, games$Black)))
+  idx     <- setNames(seq_along(players), players)
+  wi <- idx[as.character(games$White)]
+  bi <- idx[as.character(games$Black)]
+  sc <- games$Score
+  n_games <- length(sc)
+
+  r <- numeric(length(players))   # all ratings start at 0 -> sum already 0
+  set.seed(seed)
+
+  for (epoch in seq_len(n_epochs)) {
+    ord <- sample.int(n_games)          # re-shuffle game order each epoch
+    for (g in ord) {
+      i <- wi[g]; j <- bi[g]; s <- sc[g]
+      mu    <- 1 / (1 + 10^(-(r[i] - r[j]) / zeta))  # only ONE expected score needed
+      delta <- kappa * (s - mu)
+      r[i]  <- r[i] + delta    # zero-sum: no separate mu_ji, no renormalization
+      r[j]  <- r[j] - delta    #           ever needed -- see Challenge 3 proof
+    }
+  }
+  data.frame(player = players, elo = r)
+}
+
+er <- elo_rating(games, n_epochs = 10)
+summary(er$elo)
+"
+"1","    Min. "
+"1"," 1st Qu. "
+"1","  Median "
+"1","    Mean "
+"1"," 3rd Qu. "
+"1","    Max. "
+"1","
+"
+"1","-450.651 "
+"1"," -87.842 "
+"1","  -3.879 "
+"1","   0.000 "
+"1","  80.248 "
+"1"," 422.095 "
+"1","
+"
+"0","cat(sprintf(""Sum of all Elo ratings (should be ~0): %.6g\n"", sum(er$elo)))"
+"1","Sum of all Elo ratings (should be ~0): -2.05586e-12
+"

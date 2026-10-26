@@ -1,0 +1,36 @@
+"0","point_rating <- function(games) {
+  players <- sort(unique(c(games$White, games$Black)))
+  idx     <- setNames(seq_along(players), players)
+  pts     <- numeric(length(players))
+  gp      <- numeric(length(players))
+
+  wi <- idx[as.character(games$White)]
+  bi <- idx[as.character(games$Black)]
+  sc <- games$Score
+
+  # vectorized accumulation (fast; no explicit per-row R loop)
+  pts <- as.numeric(tapply(c(sc, 1 - sc), c(wi, bi), sum, default = 0))
+  gp  <- as.numeric(table(factor(c(wi, bi), levels = seq_along(players))))
+
+  data.frame(player = players, points = pts, games = gp)
+}
+
+pr <- point_rating(games)
+summary(pr$points)
+"
+"1","   Min. "
+"1","1st Qu. "
+"1"," Median "
+"1","   Mean "
+"1","3rd Qu. "
+"1","   Max. "
+"1","
+"
+"1","   0.00 "
+"1","   1.00 "
+"1","   3.00 "
+"1","   8.91 "
+"1","   9.00 "
+"1"," 167.50 "
+"1","
+"

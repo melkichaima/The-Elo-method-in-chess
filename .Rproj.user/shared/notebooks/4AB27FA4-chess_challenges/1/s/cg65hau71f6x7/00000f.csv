@@ -1,0 +1,12 @@
+"0","pearson_gp <- cor(comb$games, comb$points, method = ""pearson"")
+pearson_ge <- cor(comb$games, comb$elo,    method = ""pearson"")
+spear_gp   <- cor(comb$games, comb$points, method = ""spearman"")
+spear_ge   <- cor(comb$games, comb$elo,    method = ""spearman"")
+
+cat(sprintf(""games vs points : Pearson r = %.3f, Spearman rho = %.3f\n"", pearson_gp, spear_gp))
+"
+"1","games vs points : Pearson r = 0.990, Spearman rho = 0.947
+"
+"0","cat(sprintf(""games vs elo    : Pearson r = %.3f, Spearman rho = %.3f\n"", pearson_ge, spear_ge))"
+"1","games vs elo    : Pearson r = 0.538, Spearman rho = 0.409
+"

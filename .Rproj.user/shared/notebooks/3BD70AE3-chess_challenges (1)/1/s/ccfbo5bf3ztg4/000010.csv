@@ -1,0 +1,24 @@
+"0","white_mean <- mean(games$Score)
+n          <- nrow(games)
+se         <- sd(games$Score) / sqrt(n)
+z_stat     <- (white_mean - 0.5) / se
+p_value    <- 2 * (1 - pnorm(abs(z_stat)))
+
+rates <- c(
+  ""White win"" = mean(games$Score == 1),
+  ""Draw""      = mean(games$Score == 0.5),
+  ""Black win"" = mean(games$Score == 0)
+)
+
+knitr::kable(
+  data.frame(Outcome = names(rates), Rate = sprintf(""%.2f%%"", 100 * rates)),
+  caption = ""Outcome frequencies""
+)
+"
+"0",""
+"0","cat(sprintf(""Mean White score     : %.4f  (0.5 = no advantage)\n"", white_mean))"
+"1","Mean White score     : 0.5456  (0.5 = no advantage)
+"
+"0","cat(sprintf(""z = %.2f,  p-value = %.3g\n"", z_stat, p_value))"
+"1","z = 31.37,  p-value = 0
+"

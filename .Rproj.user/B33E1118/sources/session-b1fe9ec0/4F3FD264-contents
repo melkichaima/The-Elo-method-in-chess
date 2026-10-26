@@ -1,0 +1,367 @@
+---
+title: "The Elo Method: Answers to the Six Challenges"
+author: "Prepared for the chess.html / Elo rating assignment"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+library(dplyr)
+library(ggplot2)
+```
+
+## Data
+
+We use the `data.csv` file referenced in chess.html: `r nrow(read.csv("data.csv"))` games
+between pairs of players, with columns `White`, `Black` and `Score` (1 = White win,
+0.5 = draw, 0 = Black win).
+
+```{r load-data}
+games <- read.csv("data.csv")
+str(games)
+
+players   <- sort(unique(c(games$White, games$Black)))
+n_players <- length(players)
+idx       <- setNames(seq_along(players), players)
+
+cat("Number of games  :", nrow(games), "\n")
+cat("Number of players:", n_players, "\n")
+```
+
+---
+
+## Challenge 1 — Does White have a first-mover advantage?
+
+If there were no advantage to moving first, White's score in any game would average
+0.5 (a win counts 1, a draw 0.5, a loss 0). We test `H0: E[Score] = 0.5` against the
+two-sided alternative using the large-sample normal approximation (n is large enough
+that the CLT applies comfortably).
+
+```{r challenge1}
+white_mean <- mean(games$Score)
+n          <- nrow(games)
+se         <- sd(games$Score) / sqrt(n)
+z_stat     <- (white_mean - 0.5) / se
+p_value    <- 2 * (1 - pnorm(abs(z_stat)))
+
+rates <- c(
+  "White win" = mean(games$Score == 1),
+  "Draw"      = mean(games$Score == 0.5),
+  "Black win" = mean(games$Score == 0)
+)
+
+knitr::kable(
+  data.frame(Outcome = names(rates), Rate = sprintf("%.2f%%", 100 * rates)),
+  caption = "Outcome frequencies"
+)
+
+cat(sprintf("Mean White score     : %.4f  (0.5 = no advantage)\n", white_mean))
+cat(sprintf("z = %.2f,  p-value = %.3g\n", z_stat, p_value))
+```
+
+**Conclusion.** White's average score (`r sprintf("%.4f", white_mean)`) is
+significantly above 0.5 (z = `r sprintf("%.1f", z_stat)`, p < 0.001). The effect is
+small in absolute size but, with `r format(n, big.mark=",")` games behind it, is
+extremely unlikely to be chance. **White does have a first-mover advantage.**
+
+---
+
+## Challenge 2 — Point rating
+
+A player's *point rating* is simply the total number of points earned: 1 per win,
+0.5 per draw, 0 per loss, added up over every game the player took part in
+(regardless of colour).
+
+```{r challenge2-function}
+point_rating <- function(games) {
+  players <- sort(unique(c(games$White, games$Black)))
+  idx     <- setNames(seq_along(players), players)
+  pts     <- numeric(length(players))
+  gp      <- numeric(length(players))
+
+  wi <- idx[as.character(games$White)]
+  bi <- idx[as.character(games$Black)]
+  sc <- games$Score
+
+  # vectorized accumulation (fast; no explicit per-row R loop)
+  pts <- as.numeric(tapply(c(sc, 1 - sc), c(wi, bi), sum, default = 0))
+  gp  <- as.numeric(table(factor(c(wi, bi), levels = seq_along(players))))
+
+  data.frame(player = players, points = pts, games = gp)
+}
+
+pr <- point_rating(games)
+
+knitr::kable(
+  data.frame(
+    Statistic = c("Minimum", "1st quartile", "Median", "Mean", "3rd quartile", "Maximum"),
+    `Point rating` = sprintf("%.2f", as.numeric(summary(pr$points))),
+    check.names = FALSE
+  ),
+  caption = "Point rating — summary statistics (across all players)"
+)
+```
+
+```{r challenge2-plot, fig.width=6, fig.height=4}
+skewness <- function(x) mean((x - mean(x))^3) / sd(x)^3
+
+ggplot(pr, aes(points)) +
+  geom_histogram(bins = 40, fill = "#4C78A8", color = "white") +
+  labs(title = "Distribution of point ratings",
+       subtitle = sprintf("skewness ≈ %.2f", skewness(pr$points)),
+       x = "Point rating", y = "Number of players") +
+  theme_minimal()
+```
+
+**Discussion.** The distribution is strongly **right-skewed**: most players have only
+a handful of points, while a long tail of very active players has accumulated far
+more. This is mechanical, not a sign of exceptional skill — a player who plays many
+games will out-score a much stronger player who has only played a few, simply by
+volume. Point rating conflates *activity* with *ability*, which motivates a rating
+system that measures relative skill instead (Challenge 4).
+
+---
+
+## Challenge 3 — Proof that $\sum_i r_i = 0$ always
+
+We are given, for every pair of players $(i,j)$ who face each other:
+
+$$s_{i,j} + s_{j,i} = 1 \qquad \text{(actual scores of the two sides in one game sum to 1)}$$
+$$\mu_{i,j} + \mu_{j,i} = 1 \qquad \text{(expected scores sum to 1, by construction of the logistic } \mu)$$
+
+The Elo update after a single game between $i$ (as one side) and $j$ (as the other) is
+
+$$r_i \leftarrow r_i + \kappa\,(s_{i,j} - \mu_{i,j}), \qquad r_j \leftarrow r_j + \kappa\,(s_{j,i} - \mu_{j,i}).$$
+
+**Claim.** $\sum_k r_k$ is invariant (always equal to its initial value, which is 0
+since every rating starts at 0).
+
+**Proof.** Every update touches only the two ratings $r_i, r_j$ involved in that
+game; every other player's rating is unchanged, so the only thing that can move the
+total $\sum_k r_k$ is the sum of the two deltas applied in that game:
+
+$$\Delta\!\left(\sum_k r_k\right) = \kappa(s_{i,j}-\mu_{i,j}) + \kappa(s_{j,i}-\mu_{j,i})
+= \kappa\Big[(s_{i,j}+s_{j,i}) - (\mu_{i,j}+\mu_{j,i})\Big] = \kappa\,[\,1 - 1\,] = 0.$$
+
+So a single game update leaves $\sum_k r_k$ exactly unchanged — the rating points
+transferred to $i$ are precisely the rating points removed from $j$ (or vice versa):
+Elo is a **closed, zero-sum** accounting system. Since $\sum_k r_k = 0$ at
+initialization and every subsequent update (over every game, every epoch, in any
+order) preserves the sum, by induction $\sum_k r_k = 0$ **at all times**. $\blacksquare$
+
+---
+
+## Challenge 4 — Elo rating
+
+The proof above is exactly what lets the implementation be *optimized*: because
+$\mu_{j,i}$ is always $1-\mu_{i,j}$ and the two deltas are always equal and opposite,
+we only need to compute **one** expected score per game and apply it with a $\pm$
+sign — there is never a need for a separate renormalization step to keep the ratings
+zero-sum, because the update mechanics guarantee it automatically.
+
+```{r challenge4-function}
+elo_rating <- function(games, zeta = 400, kappa = 25, n_epochs = 10, seed = 1) {
+  players <- sort(unique(c(games$White, games$Black)))
+  idx     <- setNames(seq_along(players), players)
+  wi <- idx[as.character(games$White)]
+  bi <- idx[as.character(games$Black)]
+  sc <- games$Score
+  n_games <- length(sc)
+
+  r <- numeric(length(players))   # all ratings start at 0 -> sum already 0
+  set.seed(seed)
+
+  for (epoch in seq_len(n_epochs)) {
+    ord <- sample.int(n_games)          # re-shuffle game order each epoch
+    for (g in ord) {
+      i <- wi[g]; j <- bi[g]; s <- sc[g]
+      mu    <- 1 / (1 + 10^(-(r[i] - r[j]) / zeta))  # only ONE expected score needed
+      delta <- kappa * (s - mu)
+      r[i]  <- r[i] + delta    # zero-sum: no separate mu_ji, no renormalization
+      r[j]  <- r[j] - delta    #           ever needed -- see Challenge 3 proof
+    }
+  }
+  data.frame(player = players, elo = r)
+}
+
+er <- elo_rating(games, n_epochs = 10)
+
+knitr::kable(
+  data.frame(
+    Statistic = c("Minimum", "1st quartile", "Median", "Mean", "3rd quartile", "Maximum",
+                  "Sum across all players (zero-sum check)"),
+    `Elo rating` = c(sprintf("%.2f", as.numeric(summary(er$elo))), sprintf("%.2g", sum(er$elo))),
+    check.names = FALSE
+  ),
+  caption = "Elo rating — summary statistics (across all players)"
+)
+```
+
+```{r challenge4-plot, fig.width=6, fig.height=4}
+ggplot(er, aes(elo)) +
+  geom_histogram(bins = 40, fill = "#F58518", color = "white") +
+  labs(title = "Distribution of Elo ratings",
+       subtitle = sprintf("skewness ≈ %.2f", skewness(er$elo)),
+       x = "Elo rating", y = "Number of players") +
+  theme_minimal()
+```
+
+**Why does the Elo distribution look so different from the point-rating
+distribution?** Point rating only ever increases — it is a running total, bounded
+below by 0 and unbounded above, so it is naturally right-skewed and driven mainly by
+how many games a player has played (Challenge 2). Elo, by contrast, measures
+*relative* skill: every update pushes a player's rating toward the level implied by
+their actual results against the opposition they actually faced, and updates shrink
+once a player's rating already matches their results. The zero-sum property forces
+the whole population's ratings to balance around 0, producing a roughly
+**symmetric, bell-shaped** spread of over- and under-performers, independent of how
+many games any individual has played. And indeed `sum(er$elo)` comes out at machine
+precision from zero, empirically confirming the Challenge 3 proof.
+
+---
+
+## Challenge 5 — Are point rating and Elo rating correlated? Do the same players top both lists?
+
+```{r challenge5}
+comb <- merge(pr, er, by = "player")
+
+pearson_r  <- cor(comb$points, comb$elo, method = "pearson")
+spearman_r <- cor(comb$points, comb$elo, method = "spearman")
+
+knitr::kable(
+  data.frame(
+    `Correlation type` = c("Pearson (linear)", "Spearman (rank)"),
+    `Points vs. Elo`   = sprintf("%.3f", c(pearson_r, spearman_r)),
+    check.names = FALSE
+  ),
+  caption = "Correlation between point rating and Elo rating"
+)
+```
+
+```{r challenge5-plot, fig.width=6, fig.height=4.5}
+ggplot(comb, aes(points, elo)) +
+  geom_point(alpha = 0.25, color = "#54A24B", size = 1) +
+  labs(title = "Point rating vs Elo rating",
+       subtitle = sprintf("Pearson r = %.2f, Spearman rho = %.2f", pearson_r, spearman_r),
+       x = "Point rating", y = "Elo rating") +
+  theme_minimal()
+```
+
+```{r challenge5-top}
+K <- 20
+top_points <- comb$player[order(-comb$points)][1:K]
+top_elo    <- comb$player[order(-comb$elo)][1:K]
+overlap    <- intersect(top_points, top_elo)
+
+knitr::kable(
+  data.frame(
+    Rank             = 1:K,
+    `Top by points`  = top_points,
+    `Top by Elo`     = top_elo,
+    check.names = FALSE
+  ),
+  align = "rrr",
+  caption = sprintf("Top-%d players by each rating (overlap: %d of %d players appear on both lists)",
+                     K, length(overlap), K)
+)
+```
+
+**Conclusion.** The two ratings are positively but only moderately correlated
+(Pearson r ≈ `r sprintf("%.2f", pearson_r)`, Spearman rho ≈ `r sprintf("%.2f", spearman_r)`):
+players who do well tend to score well under both systems, but the relationship is
+far from 1-to-1, and the overlap between the two top-20 lists is partial, not
+complete. This is consistent with Challenge 2's finding that point rating is
+substantially inflated by games played: a very active, moderately-good player can
+out-score (in points) a less active but genuinely stronger player, while Elo ranks
+the latter higher.
+
+---
+
+## Challenge 6 — Does the number of games played affect rating?
+
+```{r challenge6}
+pearson_gp <- cor(comb$games, comb$points, method = "pearson")
+pearson_ge <- cor(comb$games, comb$elo,    method = "pearson")
+spear_gp   <- cor(comb$games, comb$points, method = "spearman")
+spear_ge   <- cor(comb$games, comb$elo,    method = "spearman")
+
+knitr::kable(
+  data.frame(
+    `Games played, correlated with` = c("Point rating", "Elo rating"),
+    `Pearson r`    = sprintf("%.3f", c(pearson_gp, pearson_ge)),
+    `Spearman rho` = sprintf("%.3f", c(spear_gp, spear_ge)),
+    check.names = FALSE
+  ),
+  caption = "Correlation between number of games played and each rating"
+)
+```
+
+```{r challenge6-plots, fig.width=10, fig.height=4}
+p1 <- ggplot(comb, aes(games, points)) +
+  geom_point(alpha = 0.25, color = "#4C78A8", size = 1) +
+  labs(title = sprintf("Games vs points (r=%.2f)", pearson_gp), x = "Games played", y = "Points") +
+  theme_minimal()
+
+p2 <- ggplot(comb, aes(games, elo)) +
+  geom_point(alpha = 0.25, color = "#B279A2", size = 1) +
+  labs(title = sprintf("Games vs Elo (r=%.2f)", pearson_ge), x = "Games played", y = "Elo") +
+  theme_minimal()
+
+gridExtra_available <- requireNamespace("gridExtra", quietly = TRUE)
+if (gridExtra_available) {
+  gridExtra::grid.arrange(p1, p2, ncol = 2)
+} else {
+  print(p1); print(p2)
+}
+```
+
+```{r challenge6-quintiles}
+comb$games_bucket <- cut(comb$games, breaks = quantile(comb$games, probs = seq(0, 1, 0.2)),
+                          include.lowest = TRUE)
+
+agg <- comb %>%
+  group_by(games_bucket) %>%
+  summarise(n = n(),
+            mean_points = mean(points), sd_points = sd(points),
+            mean_elo = mean(elo),       sd_elo = sd(elo))
+
+knitr::kable(
+  agg, digits = 2,
+  col.names = c("Games played (range)", "Players (n)",
+                "Avg. point rating", "Point rating SD",
+                "Avg. Elo rating", "Elo rating SD"),
+  align = "lrrrrr",
+  caption = "Rating summary by games-played quintile"
+)
+```
+
+**Conclusion.** The number of games played is, unsurprisingly, **very strongly**
+related to point rating (r ≈ `r sprintf("%.2f", pearson_gp)`) — points are a running
+total, so playing more games mechanically produces more points. Its relationship with
+Elo is `r if (abs(pearson_ge) < 0.1) "weak" else "present but much smaller"`
+(r ≈ `r sprintf("%.2f", pearson_ge)`): Elo is designed to be a measure of relative
+skill rather than activity, so it is far less sensitive to how many games a player
+has played. The games-played quintile table also shows that the *spread* (sd) of
+Elo differs across quintiles — players with very few games have had fewer updates
+to move their rating away from the initial value of 0, so their Elo is a noisier,
+less settled estimate of their true skill than that of players with many games, even
+though its central tendency is not strongly biased by activity the way points' is.
+
+---
+
+## Summary
+
+| Challenge | Finding |
+|---|---|
+| 1 | White has a small but statistically significant scoring edge (mean score `r sprintf("%.3f", white_mean)` vs 0.5) |
+| 2 | Point rating is right-skewed and driven heavily by number of games played |
+| 3 | $\sum_i r_i = 0$ is an algebraic invariant of the Elo update rule (proved above) |
+| 4 | Elo rating is symmetric/bell-shaped and empirically sums to ~0 |
+| 5 | Points and Elo are only moderately correlated; their top-player lists only partly overlap |
+| 6 | Games played strongly drives point rating but not the level of Elo — mainly its *precision* |

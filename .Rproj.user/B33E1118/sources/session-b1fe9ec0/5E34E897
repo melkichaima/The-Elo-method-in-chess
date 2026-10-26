@@ -1,0 +1,28 @@
+{
+    "id": "5E34E897",
+    "path": "C:/Users/LENOVO/Desktop/R/The Elo method in chess/chess_ELO.Rmd",
+    "project_path": "chess_ELO.Rmd",
+    "type": "r_markdown",
+    "hash": "1927553766",
+    "contents": "",
+    "dirty": false,
+    "created": 1793020814390.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "chunk_output_type": "inline",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "301,1",
+        "scrollLine": "283",
+        "last_setup_crc32": "b1fe9ec071d265ea"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1793014931,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1793020928350,
+    "read_only": false,
+    "read_only_alternatives": []
+}

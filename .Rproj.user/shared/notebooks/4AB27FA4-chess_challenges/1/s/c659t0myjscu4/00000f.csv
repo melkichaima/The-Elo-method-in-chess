@@ -1,0 +1,12 @@
+"0","comb <- merge(pr, er, by = ""player"")
+
+pearson_r  <- cor(comb$points, comb$elo, method = ""pearson"")
+spearman_r <- cor(comb$points, comb$elo, method = ""spearman"")
+
+cat(sprintf(""Pearson correlation (points, elo)  = %.3f\n"", pearson_r))
+"
+"1","Pearson correlation (points, elo)  = 0.590
+"
+"0","cat(sprintf(""Spearman correlation (points, elo) = %.3f\n"", spearman_r))"
+"1","Spearman correlation (points, elo) = 0.630
+"
